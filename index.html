@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel 轉 JSONL / MD 工具</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 SheetJS 用於解析 Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- 引入 JSZip 用於打包 ZIP -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- 引入 Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans text-slate-800 pb-12">
+    <!-- 全域 Loading 遮罩 -->
+    <div id="global-loading" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex flex-col items-center justify-center hidden">
+        <i data-lucide="loader-2" class="w-12 h-12 text-emerald-500 animate-spin mb-4"></i>
+        <p class="text-white text-lg font-semibold tracking-wide">正在分析檔案中，請稍候...</p>
+    </div>
+
+    <div class="max-w-4xl mx-auto pt-12 px-4 sm:px-6 lg:px-8">
+        <!-- 標題區塊 -->
+        <div class="text-center mb-10">
+            <h1 class="text-3xl font-extrabold text-slate-900 sm:text-4xl flex items-center justify-center gap-3">
+                <i data-lucide="file-spreadsheet" class="w-10 h-10 text-emerald-600"></i>
+                Excel 轉 JSONL / MD 工具
+            </h1>
+            <p class="mt-4 text-lg text-slate-600">
+                純前端解析，支援多 Sheet 自動轉換，自動過濾空值欄位。
+            </p>
+        </div>
+
+        <!-- 拖曳上傳區塊 -->
+        <div id="dropzone" class="mt-2 flex justify-center rounded-xl border-2 border-dashed border-slate-300 px-6 py-16 bg-white hover:bg-slate-50 transition-colors duration-200 ease-in-out cursor-pointer group">
+            <div class="text-center">
+                <i data-lucide="upload-cloud" class="mx-auto h-12 w-12 text-slate-400 group-hover:text-emerald-500 transition-colors"></i>
+                <div class="mt-4 flex text-sm leading-6 text-slate-600 justify-center">
+                    <label for="file-upload" class="relative cursor-pointer rounded-md bg-white font-semibold text-emerald-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-emerald-600 focus-within:ring-offset-2 hover:text-emerald-500">
+                        <span>點擊選擇 Excel 檔案</span>
+                        <input id="file-upload" name="file-upload" type="file" class="sr-only" accept=".xlsx, .xls, .csv, .ods">
+                    </label>
+                    <p class="pl-1">或將檔案拖曳至此</p>
+                </div>
+                <p class="text-xs leading-5 text-slate-500 mt-2">支援 .xlsx, .xls, .ods, .csv 格式</p>
+            </div>
+        </div>
+
+        <!-- 載入線上檔案區塊 -->
+        <div class="mt-8 flex flex-col items-center max-w-xl mx-auto bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <label for="online-url-input" class="block text-sm font-semibold text-slate-700 mb-3 w-full text-left">
+                <i data-lucide="link" class="w-4 h-4 inline-block mr-1 text-slate-500"></i>載入線上檔案網址
+            </label>
+            <div class="flex w-full gap-2">
+                <input type="url" id="online-url-input" class="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 placeholder:text-slate-400 transition-colors" value="https://docs.google.com/spreadsheets/d/1qaweEtdZCQjG3xp0KIHUm1eH6Ga2OV7CHPVAjzPYmqQ/export?format=xlsx" placeholder="請輸入 Excel/ODS 檔案的直接下載網址">
+                <button id="load-url-btn" class="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-50 border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 transition-colors whitespace-nowrap min-w-[80px]">
+                    <i data-lucide="cloud-download" class="w-4 h-4"></i>
+                    <span>載入</span>
+                </button>
+            </div>
+            <p class="text-xs text-slate-400 mt-2 w-full text-left">* 提示：讀取自訂網址時，對方的伺服器必須允許 CORS 跨來源請求。</p>
+        </div>
+
+        <!-- 輸出設定區塊 -->
+        <div class="mt-6 max-w-2xl mx-auto bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <h3 class="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                <i data-lucide="settings" class="w-4 h-4 text-slate-500"></i> 輸出設定
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                <!-- 分割設定 -->
+                <div>
+                    <label for="split-size" class="block text-xs font-medium text-slate-500 mb-1">每檔最大列數</label>
+                    <input type="number" id="split-size" min="1" value="5000" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+                </div>
+                <!-- 內容格式設定 -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">內容格式</label>
+                    <div class="flex bg-slate-100 p-1 rounded-md">
+                        <label class="flex-1 text-center cursor-pointer">
+                            <input type="radio" name="format-selector" value="jsonl" class="peer sr-only" checked>
+                            <div class="py-1.5 text-sm rounded peer-checked:bg-white peer-checked:shadow-sm peer-checked:text-emerald-600 peer-checked:font-semibold text-slate-500 transition-all">JSONL</div>
+                        </label>
+                        <label class="flex-1 text-center cursor-pointer">
+                            <input type="radio" name="format-selector" value="md" class="peer sr-only">
+                            <div class="py-1.5 text-sm rounded peer-checked:bg-white peer-checked:shadow-sm peer-checked:text-emerald-600 peer-checked:font-semibold text-slate-500 transition-all">Markdown</div>
+                        </label>
+                    </div>
+                </div>
+                <!-- 副檔名設定 -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">輸出副檔名</label>
+                    <div class="flex bg-slate-100 p-1 rounded-md">
+                        <label class="flex-1 text-center cursor-pointer">
+                            <input type="radio" name="ext-selector" value=".txt" class="peer sr-only" checked>
+                            <div class="py-1.5 text-sm rounded peer-checked:bg-white peer-checked:shadow-sm peer-checked:text-emerald-600 peer-checked:font-semibold text-slate-500 transition-all">.txt</div>
+                        </label>
+                        <label class="flex-1 text-center cursor-pointer">
+                            <input type="radio" name="ext-selector" value=".md" class="peer sr-only">
+                            <div class="py-1.5 text-sm rounded peer-checked:bg-white peer-checked:shadow-sm peer-checked:text-emerald-600 peer-checked:font-semibold text-slate-500 transition-all">.md</div>
+                        </label>
+                        <label class="flex-1 text-center cursor-pointer">
+                            <input type="radio" name="ext-selector" value=".jsonl" class="peer sr-only">
+                            <div class="py-1.5 text-sm rounded peer-checked:bg-white peer-checked:shadow-sm peer-checked:text-emerald-600 peer-checked:font-semibold text-slate-500 transition-all">.jsonl</div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 轉換結果區塊 -->
+        <div id="results-container" class="mt-12 hidden">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                <h2 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="check-circle" class="w-6 h-6 text-emerald-500"></i>
+                    轉換結果
+                </h2>
+                <button id="download-zip-btn" class="hidden inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-colors">
+                    <i data-lucide="archive" class="w-4 h-4"></i>
+                    下載全部 (ZIP)
+                </button>
+            </div>
+            <div id="sheets-list" class="space-y-6">
+                <!-- 動態生成的 Sheet 卡片將會放在這裡 -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 初始化 Icons
+        lucide.createIcons();
+
+        // --- 處理 LocalStorage 記憶設定 ---
+        function loadSettings() {
+            const savedSplitSize = localStorage.getItem('splitSize');
+            if (savedSplitSize) document.getElementById('split-size').value = savedSplitSize;
+
+            const savedFormat = localStorage.getItem('outputFormat');
+            if (savedFormat) {
+                const formatRadio = document.querySelector(`input[name="format-selector"][value="${savedFormat}"]`);
+                if(formatRadio) formatRadio.checked = true;
+            }
+
+            // 預設副檔名可以改成 .txt
+            const savedExt = localStorage.getItem('outputExt') || '.txt';
+            const extRadio = document.querySelector(`input[name="ext-selector"][value="${savedExt}"]`);
+            if(extRadio) extRadio.checked = true;
+        }
+
+        // 綁定事件：當設定改變時自動儲存到 LocalStorage
+        document.getElementById('split-size').addEventListener('input', (e) => localStorage.setItem('splitSize', e.target.value));
+
+        document.querySelectorAll('input[name="format-selector"]').forEach(radio => {
+            radio.addEventListener('change', (e) => localStorage.setItem('outputFormat', e.target.value));
+        });
+
+        document.querySelectorAll('input[name="ext-selector"]').forEach(radio => {
+            radio.addEventListener('change', (e) => localStorage.setItem('outputExt', e.target.value));
+        });
+
+        // 執行載入設定
+        loadSettings();
+        // ------------------------------------
+
+        // 儲存當前轉換的所有檔案資料，供 ZIP 下載使用
+        let currentGeneratedFiles = [];
+        let currentBaseFilename = "";
+
+        // DOM 元素
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('file-upload');
+        const resultsContainer = document.getElementById('results-container');
+        const sheetsList = document.getElementById('sheets-list');
+
+        // 取得當前時間 YYYYMMDD-HHmmSS
+        function getFormattedTime() {
+            const now = new Date();
+            const pad = (n) => n.toString().padStart(2, '0');
+            return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        }
+
+        // 處理 Excel 轉換的主要邏輯
+        function processExcel(file) {
+            // 顯示 Loading 遮罩
+            const globalLoading = document.getElementById('global-loading');
+            globalLoading.classList.remove('hidden');
+
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                // 利用 setTimeout 將繁重的解析工作放到下一個 Event Loop，讓瀏覽器有時間渲染 Loading 畫面
+                setTimeout(() => {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        // 解析 Excel 檔案
+                        const workbook = XLSX.read(data, { type: 'array' });
+
+                        // 取得原始主檔名 (移除副檔名)
+                        const baseFilename = file.name.replace(/\.[^/.]+$/, "");
+                        const timestamp = getFormattedTime();
+
+                        // 初始化 ZIP 相關變數
+                        currentGeneratedFiles = [];
+                        currentBaseFilename = baseFilename;
+                        document.getElementById('download-zip-btn').classList.add('hidden');
+
+                        // 清空先前的結果並顯示區塊
+                        sheetsList.innerHTML = '';
+                        resultsContainer.classList.remove('hidden');
+
+                        // 取得使用者設定
+                        const selectedFormat = document.querySelector('input[name="format-selector"]:checked').value;
+                        const selectedExt = document.querySelector('input[name="ext-selector"]:checked').value;
+                        let splitSize = parseInt(document.getElementById('split-size').value, 10);
+                        if (isNaN(splitSize) || splitSize < 1) splitSize = 5000;
+
+                        let processedCount = 0;
+
+                        // 遍歷每一個 Sheet
+                        workbook.SheetNames.forEach(sheetName => {
+                            const worksheet = workbook.Sheets[sheetName];
+                            // 將 Sheet 轉換為 JSON 陣列 (移除 raw: false 以保留原始的數字型態)
+                            const rows = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+
+                            if (rows.length === 0) return; // 略過空的 Sheet
+
+                            let dataBlocks = [];
+
+                            // 處理每一行資料
+                            rows.forEach(row => {
+                                let rowObj = {};
+                                let mdContent = [];
+                                let hasData = false;
+
+                                for (let key in row) {
+                                    // 去除欄位名稱的換行符號 (\r 或 \n)
+                                    let sanitizedKey = key.replace(/[\r\n]+/g, '').trim();
+
+                                    let val = row[key];
+                                    // 過濾空值 (包含 null, undefined 或空字串)
+                                    if (val !== null && val !== undefined && val !== "") {
+                                        // 若值為字串則去前後空白
+                                        if (typeof val === 'string') {
+                                            val = val.trim();
+                                            if (val === "") continue;
+                                        }
+                                        rowObj[sanitizedKey] = val;
+                                        mdContent.push(`${sanitizedKey}:${val}`);
+                                        hasData = true;
+                                    }
+                                }
+                                if (hasData) {
+                                    if (selectedFormat === 'jsonl') {
+                                        dataBlocks.push(JSON.stringify(rowObj));
+                                    } else {
+                                        dataBlocks.push(mdContent.join('\n'));
+                                    }
+                                }
+                            });
+
+                            if (dataBlocks.length > 0) {
+                                processedCount++;
+
+                                const totalRows = dataBlocks.length;
+                                const totalChunks = Math.ceil(totalRows / splitSize);
+
+                                for (let i = 0; i < totalChunks; i++) {
+                                    // 切割每個檔案的資料
+                                    const chunk = dataBlocks.slice(i * splitSize, (i + 1) * splitSize);
+
+                                    // 依據格式決定串接方式
+                                    const finalContent = selectedFormat === 'jsonl'
+                                        ? chunk.join('\n')
+                                        : chunk.join('\n---\n');
+
+                                    // 組合檔名與標籤
+                                    const partSuffix = totalChunks > 1 ? `-part${i + 1}` : '';
+                                    const outputFilename = `${baseFilename}-${sheetName}-${timestamp}${partSuffix}${selectedExt}`;
+                                    const partLabel = totalChunks > 1 ? `(Part ${i + 1}/${totalChunks})` : '';
+
+                                    // 將生成的檔案內容存入陣列，供 ZIP 使用
+                                    currentGeneratedFiles.push({ filename: outputFilename, content: finalContent });
+
+                                    createResultCard(sheetName, outputFilename, finalContent, selectedExt, partLabel);
+                                }
+                            }
+                        });
+
+                        if (processedCount === 0) {
+                            sheetsList.innerHTML = `<div class="p-4 bg-yellow-50 text-yellow-800 rounded-lg border border-yellow-200">此 Excel 檔案中沒有找到任何有效的資料。</div>`;
+                        } else if (currentGeneratedFiles.length > 0) {
+                            // 若有產生檔案，則顯示下載 ZIP 按鈕
+                            document.getElementById('download-zip-btn').classList.remove('hidden');
+                        }
+
+                    } catch (error) {
+                        console.error(error);
+                        alert('解析 Excel 檔案時發生錯誤，請確認檔案格式是否正確。');
+                    } finally {
+                        // 無論成功或失敗，都隱藏 Loading 遮罩
+                        globalLoading.classList.add('hidden');
+                    }
+                }, 50); // 延遲 50ms 確保 UI 優先更新
+            };
+
+            reader.onerror = function() {
+                globalLoading.classList.add('hidden');
+                alert('讀取檔案失敗！');
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        // 建立結果卡片 UI
+        function createResultCard(sheetName, filename, jsonContent, ext, partLabel) {
+            const card = document.createElement('div');
+            card.className = 'bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden';
+
+            // 根據選擇的副檔名決定 Blob 類型
+            let mimeType = 'text/plain'; // 預設 txt 使用 text/plain
+            if (ext === '.jsonl') mimeType = 'application/jsonlines+json';
+            else if (ext === '.md') mimeType = 'text/markdown';
+
+            const blob = new Blob([jsonContent], { type: `${mimeType};charset=utf-8;` });
+            const url = URL.createObjectURL(blob);
+
+            const displayExt = ext.toUpperCase().replace('.', '');
+
+            card.innerHTML = `
+                <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h3 class="font-semibold text-slate-800 flex items-center gap-2">
+                            <i data-lucide="table" class="w-4 h-4 text-slate-500"></i>
+                            Sheet: <span class="text-emerald-600">${sheetName}</span>
+                            <span class="text-xs text-slate-500 font-normal ml-1">${partLabel}</span>
+                        </h3>
+                        <p class="text-xs text-slate-500 mt-1">${filename}</p>
+                    </div>
+                    <a href="${url}" download="${filename}" class="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 transition-colors">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        下載 ${displayExt}
+                    </a>
+                </div>
+                <div class="p-6 bg-slate-800">
+                    <pre class="text-sm text-slate-300 font-mono overflow-auto max-h-64 whitespace-pre-wrap">${escapeHtml(jsonContent)}</pre>
+                </div>
+            `;
+            sheetsList.appendChild(card);
+
+            // 重新初始化新加入的 Icons
+            lucide.createIcons({ root: card });
+        }
+
+        // HTML 溢出字元處理 (防止 XSS)
+        function escapeHtml(unsafe) {
+            return unsafe
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
+        // 處理檔案拖曳事件
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropzone.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropzone.addEventListener(eventName, () => {
+                dropzone.classList.add('border-emerald-500', 'bg-emerald-50');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropzone.addEventListener(eventName, () => {
+                dropzone.classList.remove('border-emerald-500', 'bg-emerald-50');
+            }, false);
+        });
+
+        // 處理檔案放下
+        dropzone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length > 0) {
+                fileInput.files = files; // 同步到 input
+                processExcel(files[0]);
+            }
+        });
+
+        // 處理點擊選擇檔案
+        fileInput.addEventListener('change', function(e) {
+            if (this.files.length > 0) {
+                processExcel(this.files[0]);
+            }
+        });
+
+        // 處理載入線上檔案網址
+        const loadUrlBtn = document.getElementById('load-url-btn');
+        const onlineUrlInput = document.getElementById('online-url-input');
+
+        loadUrlBtn.addEventListener('click', async () => {
+            let url = onlineUrlInput.value.trim();
+            if (!url) {
+                alert('請先輸入網址！');
+                return;
+            }
+
+            // 自動偵測並轉換 Google Sheets 網址為匯出 Excel 格式的網址
+            const gsRegex = /^https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/;
+            const match = url.match(gsRegex);
+            if (match) {
+                const spreadsheetId = match[1];
+                url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=xlsx`;
+            }
+
+            // 替換按鈕狀態為讀取中
+            const originalText = loadUrlBtn.innerHTML;
+            loadUrlBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>載入中</span>';
+            loadUrlBtn.disabled = true;
+            lucide.createIcons({ root: loadUrlBtn });
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('網路回應錯誤：' + response.status);
+
+                // 將回傳內容轉換成 Blob
+                const blob = await response.blob();
+
+                // 嘗試從網址判斷副檔名，若無則預設為 xlsx
+                let filename = "線上載入檔案.xlsx";
+                try {
+                    const urlObj = new URL(url);
+                    const pathParts = urlObj.pathname.split('/');
+                    const lastPart = pathParts[pathParts.length - 1];
+                    // 如果網址結尾有附檔名，則作為檔名使用
+                    if (lastPart && lastPart.includes('.')) {
+                        filename = decodeURIComponent(lastPart);
+                    }
+                } catch (e) {
+                    // 解析網址失敗時忽略，使用預設檔名
+                }
+
+                const file = new File([blob], filename, {
+                    type: response.headers.get('content-type') || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                });
+
+                processExcel(file);
+            } catch (error) {
+                console.error('載入線上檔案失敗:', error);
+                alert('載入檔案失敗！\\n請確認：\\n1. 網址是否正確且公開\\n2. 該伺服器是否允許 CORS 跨來源請求\\n\\n錯誤細節: ' + error.message);
+            } finally {
+                // 還原按鈕狀態
+                loadUrlBtn.innerHTML = originalText;
+                loadUrlBtn.disabled = false;
+                lucide.createIcons({ root: loadUrlBtn });
+            }
+        });
+
+        // 處理 ZIP 打包與下載
+        document.getElementById('download-zip-btn').addEventListener('click', async function() {
+            if (currentGeneratedFiles.length === 0) return;
+
+            // 顯示打包中狀態
+            const originalText = this.innerHTML;
+            this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>打包中...</span>';
+            this.disabled = true;
+            lucide.createIcons({ root: this });
+
+            try {
+                const zip = new JSZip();
+
+                // 將所有生成的檔案加入 ZIP 中
+                currentGeneratedFiles.forEach(file => {
+                    zip.file(file.filename, file.content);
+                });
+
+                // 非同步產生 ZIP 檔案 Blob
+                const content = await zip.generateAsync({ type: 'blob' });
+
+                // 觸發下載
+                const url = URL.createObjectURL(content);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${currentBaseFilename}-批次下載-${getFormattedTime()}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error("ZIP 生成失敗:", error);
+                alert("打包 ZIP 檔案時發生錯誤！");
+            } finally {
+                // 還原按鈕狀態
+                this.innerHTML = originalText;
+                this.disabled = false;
+                lucide.createIcons({ root: this });
+            }
+        });
+
+    </script>
+</body>
+</html>
