@@ -1,5 +1,5 @@
 {
-  "name": "Excel 轉 JSONL / MD 工具",
+  "name": "Sheet to Chunk",
   "short_name": "Sheet2Chunk",
   "description": "A tool to convert spreadsheet content into structured chunks optimized for AI processing and understanding.",
   "start_url": ".",
