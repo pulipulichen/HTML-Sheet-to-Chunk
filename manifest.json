@@ -1,6 +1,6 @@
 {
-  "name": "Sheet to Chunk",
-  "short_name": "Sheet2Chunk",
+  "name": "Sheet to Chunks",
+  "short_name": "Sheet2Chunks",
   "description": "A tool to convert spreadsheet content into structured chunks optimized for AI processing and understanding.",
   "start_url": ".",
   "display": "standalone",
