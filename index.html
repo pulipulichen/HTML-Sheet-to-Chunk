@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Excel 轉 JSONL / MD 工具</title>
+    <title>Sheet to Chunks</title>
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 引入 SheetJS 用於解析 Excel -->
@@ -34,7 +34,7 @@
         <div class="text-center mb-10">
             <h1 class="text-3xl font-extrabold text-slate-900 sm:text-4xl flex items-center justify-center gap-3">
                 <i data-lucide="file-spreadsheet" class="w-10 h-10 text-emerald-600"></i>
-                Excel 轉 JSONL / MD 工具
+                Sheet to Chunks
             </h1>
             <p class="mt-4 text-lg text-slate-600">
                 純前端解析，支援多 Sheet 自動轉換，自動過濾空值欄位。
@@ -47,7 +47,7 @@
                 <i data-lucide="upload-cloud" class="mx-auto h-12 w-12 text-slate-400 group-hover:text-emerald-500 transition-colors"></i>
                 <div class="mt-4 flex text-sm leading-6 text-slate-600 justify-center">
                     <label for="file-upload" class="relative cursor-pointer rounded-md bg-white font-semibold text-emerald-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-emerald-600 focus-within:ring-offset-2 hover:text-emerald-500">
-                        <span>點擊選擇 Excel 檔案</span>
+                        <span>點擊選擇試算表檔案</span>
                         <input id="file-upload" name="file-upload" type="file" class="sr-only" accept=".xlsx, .xls, .csv, .ods">
                     </label>
                     <p class="pl-1">或將檔案拖曳至此</p>

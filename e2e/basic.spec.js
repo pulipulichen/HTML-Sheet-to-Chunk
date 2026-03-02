@@ -1,10 +1,14 @@
 import { test, expect } from '@playwright/test';
 
 test('頁面標題正確且主要元素顯示', async ({ page }) => {
+  // 由於 Playwright config 可能已經設定 baseURL，這裡使用相對路徑或確保與環境一致
   await page.goto('http://localhost:8080');
 
-  // 檢查標題
-  await expect(page).toHaveTitle(/Excel 轉 JSONL \/ MD 工具/);
+  // 檢查標題 (根據 index.html: <title>Sheet to Chunks</title>)
+  await expect(page).toHaveTitle(/Sheet to Chunks/);
+
+  // 檢查標題文字 (根據 index.html: Sheet to Chunks)
+  await expect(page.locator('h1')).toContainText('Sheet to Chunks');
 
   // 檢查拖曳上傳區塊是否存在
   const dropzone = page.locator('#dropzone');
